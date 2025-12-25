@@ -12,20 +12,20 @@ namespace sap::sync {
     // ensure it's only initialized once.
     static bool ensure_sodium_initialized() {
         static bool initialized = false;
-        static bool init_stl::result = false;
+        static bool init_result = false;
         if (!initialized) {
-            init_stl::result = (sodium_init() >= 0);
+            init_result = (sodium_init() >= 0);
             initialized = true;
         }
-        return init_stl::result;
+        return init_result;
     }
 
-    std::string base64_encode(const void* data, usize size) {
+    std::string base64_encode(const void* data, size_t size) {
         ensure_sodium_initialized();
         // Calculate output size (base64 is ~4/3 of input + padding + null)
-        usize encodedLen = sodium_base64_encoded_len(size, sodium_base64_VARIANT_ORIGINAL);
-        std::string encoded(encodedLen, '\0');
-        sodium_bin2base64(encoded.data(), encodedLen, static_cast<const unsigned char*>(data), size, sodium_base64_VARIANT_ORIGINAL);
+        size_t encoded_len = sodium_base64_encoded_len(size, sodium_base64_VARIANT_ORIGINAL);
+        std::string encoded(encoded_len, '\0');
+        sodium_bin2base64(encoded.data(), encoded_len, static_cast<const unsigned char*>(data), size, sodium_base64_VARIANT_ORIGINAL);
         // Remove null terminator
         while (!encoded.empty() && encoded.back() == '\0') {
             encoded.pop_back();
@@ -39,13 +39,13 @@ namespace sap::sync {
         ensure_sodium_initialized();
         // Maximum decoded size is 3/4 of encoded
         std::vector<u8> decoded(encoded.size());
-        size_t decodedLen = 0;
-        int rc = sodium_base642bin(decoded.data(), decoded.size(), encoded.data(), encoded.size(), nullptr, &decodedLen, nullptr,
+        size_t decoded_len = 0;
+        int rc = sodium_base642bin(decoded.data(), decoded.size(), encoded.data(), encoded.size(), nullptr, &decoded_len, nullptr,
                                    sodium_base64_VARIANT_ORIGINAL);
         if (rc != 0) {
             return stl::make_error<std::vector<u8>>("Invalid base64 encoding");
         }
-        decoded.resize(decodedLen);
+        decoded.resize(decoded_len);
         return decoded;
     }
 
@@ -67,85 +67,85 @@ namespace sap::sync {
         // Reconstruct the SSH format
         std::vector<u8> blob;
         // Algorithm length (big-endian)
-        u32 algoLen = static_cast<u32>(algorithm.size());
-        blob.push_back((algoLen >> 24) & 0xFF);
-        blob.push_back((algoLen >> 16) & 0xFF);
-        blob.push_back((algoLen >> 8) & 0xFF);
-        blob.push_back(algoLen & 0xFF);
+        u32 algo_len = static_cast<u32>(algorithm.size());
+        blob.push_back((algo_len >> 24) & 0xFF);
+        blob.push_back((algo_len >> 16) & 0xFF);
+        blob.push_back((algo_len >> 8) & 0xFF);
+        blob.push_back(algo_len & 0xFF);
         // Algorithm
         blob.insert(blob.end(), algorithm.begin(), algorithm.end());
         // Key length (big-endian)
-        u32 keyLen = static_cast<u32>(keyData.size());
-        blob.push_back((keyLen >> 24) & 0xFF);
-        blob.push_back((keyLen >> 16) & 0xFF);
-        blob.push_back((keyLen >> 8) & 0xFF);
-        blob.push_back(keyLen & 0xFF);
+        u32 key_len = static_cast<u32>(key_data.size());
+        blob.push_back((key_len >> 24) & 0xFF);
+        blob.push_back((key_len >> 16) & 0xFF);
+        blob.push_back((key_len >> 8) & 0xFF);
+        blob.push_back(key_len & 0xFF);
         // Key data
-        blob.insert(blob.end(), keyData.begin(), keyData.end());
-        std::string stl::result = algorithm + " " + base64_encode(blob);
+        blob.insert(blob.end(), key_data.begin(), key_data.end());
+        std::string result = algorithm + " " + base64_encode(blob);
         if (!comment.empty()) {
-            stl::result += " " + comment;
+            result += " " + comment;
         }
-        return stl::result;
+        return result;
     }
 
     stl::result<PublicKey> parse_public_key(std::string_view keyString) {
         // Split by spaces: algorithm base64 [comment]
-        std::istringstream iss(std::string(keyString));
-        std::string algorithm, base64Data, comment;
-        iss >> algorithm >> base64Data;
+        std::istringstream iss{std::string(keyString)};
+        std::string algorithm, base64_data, comment;
+        iss >> algorithm >> base64_data;
         std::getline(iss, comment);
         // Trim leading space from comment
         if (!comment.empty() && comment[0] == ' ') {
             comment = comment.substr(1);
         }
-        if (algorithm.empty() || base64Data.empty()) {
+        if (algorithm.empty() || base64_data.empty()) {
             return stl::make_error<PublicKey>("Invalid SSH key format");
         }
         // We only support Ed25519
         if (algorithm != "ssh-ed25519") {
-            return stl::make_error<PublicKey>("Unsupported key algorithm: " + algorithm + " (only ssh-ed25519 is supported)");
+            return stl::make_error<PublicKey>("Unsupported key algorithm: {} (only ssh-ed25519 is supported)", algorithm);
         }
         // Decode base64
-        auto blobstl::result = base64_decode(base64Data);
-        if (!blobstl::result) {
+        auto blob_result = base64_decode(base64_data);
+        if (!blob_result) {
             return stl::make_error<PublicKey>("Invalid base64 in SSH key");
         }
-        auto& blob = blobstl::result.value();
+        auto& blob = blob_result.value();
         // Parse the blob
-        usize offset = 0;
+        size_t offset = 0;
         // Read algorithm name length
         if (offset + 4 > blob.size()) {
             return stl::make_error<PublicKey>("SSH key blob too short");
         }
-        u32 algoLen = read_be32(&blob[offset]);
+        u32 algo_len = read_be32(&blob[offset]);
         offset += 4;
         // Read algorithm name
-        if (offset + algoLen > blob.size()) {
+        if (offset + algo_len > blob.size()) {
             return stl::make_error<PublicKey>("SSH key blob truncated (algorithm)");
         }
-        std::string blobAlgo(blob.begin() + offset, blob.begin() + offset + algoLen);
-        offset += algoLen;
-        if (blobAlgo != algorithm) {
+        std::string blob_algo(blob.begin() + offset, blob.begin() + offset + algo_len);
+        offset += algo_len;
+        if (blob_algo != algorithm) {
             return stl::make_error<PublicKey>("Algorithm mismatch in SSH key");
         }
         // Read key data length
         if (offset + 4 > blob.size()) {
             return stl::make_error<PublicKey>("SSH key blob truncated (key length)");
         }
-        u32 keyLen = read_be32(&blob[offset]);
+        u32 key_len = read_be32(&blob[offset]);
         offset += 4;
         // Ed25519 public keys are exactly 32 bytes
-        if (keyLen != crypto_sign_ed25519_PUBLICKEYBYTES) {
-            return stl::make_error<PublicKey>("Invalid Ed25519 key length: " + std::to_string(keyLen));
+        if (key_len != crypto_sign_ed25519_PUBLICKEYBYTES) {
+            return stl::make_error<PublicKey>("Invalid Ed25519 key length: {}", std::to_string(key_len));
         }
         // Read key data
-        if (offset + keyLen > blob.size()) {
+        if (offset + key_len > blob.size()) {
             return stl::make_error<PublicKey>("SSH key blob truncated (key data)");
         }
         PublicKey pk;
         pk.algorithm = algorithm;
-        pk.keyData = std::vector<u8>(blob.begin() + offset, blob.begin() + offset + keyLen);
+        pk.key_data = std::vector<u8>(blob.begin() + offset, blob.begin() + offset + key_len);
         pk.comment = comment;
         return pk;
     }
@@ -162,9 +162,9 @@ namespace sap::sync {
     std::string generate_token() {
         ensure_sodium_initialized();
         // 32 bytes = 256 bits of randomness
-        std::vector<u8> tokenBytes(32);
-        randombytes_buf(tokenBytes.data(), tokenBytes.size());
-        return base64_encode(tokenBytes);
+        std::vector<u8> token_bytes(32);
+        randombytes_buf(token_bytes.data(), token_bytes.size());
+        return base64_encode(token_bytes);
     }
 
     // Ed25519 signature verification:
@@ -173,34 +173,34 @@ namespace sap::sync {
     // 3. Use libsodium's crypto_sign_ed25519_verify_detached
     // The signature proves the signer has the private key corresponding to
     // the public key, without revealing the private key.
-    stl::result<bool> verify_signature(const PublicKey& publicKey, std::string_view challenge, std::string_view signature) {
+    stl::result<bool> verify_signature(const PublicKey& public_ley, std::string_view challenge, std::string_view signature) {
         ensure_sodium_initialized();
         // Verify key is Ed25519
-        if (publicKey.algorithm != "ssh-ed25519") {
+        if (public_ley.algorithm != "ssh-ed25519") {
             return stl::make_error<bool>("Only Ed25519 keys are supported");
         }
-        if (publicKey.keyData.size() != crypto_sign_ed25519_PUBLICKEYBYTES) {
+        if (public_ley.key_data.size() != crypto_sign_ed25519_PUBLICKEYBYTES) {
             return stl::make_error<bool>("Invalid Ed25519 public key size");
         }
         // Decode challenge
-        auto challengestl::result = base64_decode(challenge);
-        if (!challengestl::result) {
+        auto challenge_result = base64_decode(challenge);
+        if (!challenge_result) {
             return stl::make_error<bool>("Invalid challenge encoding");
         }
-        auto& challengeBytes = challengestl::result.value();
+        auto& challenge_bytes = challenge_result.value();
         // Decode signature
-        auto sigstl::result = base64_decode(signature);
-        if (!sigstl::result) {
+        auto signature_result = base64_decode(signature);
+        if (!signature_result) {
             return stl::make_error<bool>("Invalid signature encoding");
         }
-        auto& sigBytes = sigstl::result.value();
+        auto& sig_bytes = signature_result.value();
         // Ed25519 signatures are exactly 64 bytes
-        if (sigBytes.size() != crypto_sign_ed25519_BYTES) {
+        if (sig_bytes.size() != crypto_sign_ed25519_BYTES) {
             return stl::make_error<bool>("Invalid Ed25519 signature size");
         }
         // Verify
-        int rc =
-            crypto_sign_ed25519_verify_detached(sigBytes.data(), challengeBytes.data(), challengeBytes.size(), publicKey.keyData.data());
+        int rc = crypto_sign_ed25519_verify_detached(sig_bytes.data(), challenge_bytes.data(), challenge_bytes.size(),
+                                                     public_ley.key_data.data());
         // rc == 0 means valid, -1 means invalid
         return (rc == 0);
     }
@@ -219,25 +219,25 @@ namespace sap::sync {
         // Find the base64 content between the markers
         const std::string begin = "-----BEGIN OPENSSH PRIVATE KEY-----";
         const std::string end = "-----END OPENSSH PRIVATE KEY-----";
-        auto beginPos = content.find(begin);
-        auto endPos = content.find(end);
-        if (beginPos == std::string_view::npos || endPos == std::string_view::npos) {
+        auto begin_pos = content.find(begin);
+        auto end_pos = content.find(end);
+        if (begin_pos == std::string_view::npos || end_pos == std::string_view::npos) {
             return stl::make_error<std::vector<u8>>("Not an OpenSSH private key");
         }
-        std::string base64Content;
-        auto dataStart = beginPos + begin.size();
-        auto dataEnd = endPos;
-        for (usize i = dataStart; i < dataEnd; ++i) {
+        std::string base64_content;
+        auto data_start = begin_pos + begin.size();
+        auto data_end = end_pos;
+        for (size_t i = data_start; i < data_end; ++i) {
             char c = content[i];
             if (c != '\n' && c != '\r' && c != ' ') {
-                base64Content += c;
+                base64_content += c;
             }
         }
-        auto blobstl::result = base64_decode(base64Content);
-        if (!blobstl::result) {
+        auto blob_result = base64_decode(base64_content);
+        if (!blob_result) {
             return stl::make_error<std::vector<u8>>("Failed to decode private key base64");
         }
-        return blobstl::result;
+        return blob_result;
     }
 
     stl::result<std::string> sign_challenge(const std::filesystem::path& privateKeyPath, std::string_view challenge) {
@@ -245,17 +245,17 @@ namespace sap::sync {
         // Read private key file
         std::ifstream file(privateKeyPath);
         if (!file) {
-            return stl::make_error<std::string>("Cannot open private key file: " + privateKeyPath.string());
+            return stl::make_error<std::string>("Cannot open private key file: {}", privateKeyPath.string());
         }
         std::stringstream buffer;
         buffer << file.rdbuf();
         std::string content = buffer.str();
         // Parse OpenSSH format
-        auto blobstl::result = parse_openssh_private_key(content);
-        if (!blobstl::result) {
-            return stl::make_error<std::string>(blobstl::result.error());
+        auto blob_result = parse_openssh_private_key(content);
+        if (!blob_result) {
+            return stl::make_error<std::string>("{}", blob_result.error());
         }
-        auto& blob = blobstl::result.value();
+        auto& blob = blob_result.value();
         // OpenSSH private key format is complex. The structure is:
         // - "openssh-key-v1\0" magic
         // - cipher name (string)
@@ -275,9 +275,9 @@ namespace sap::sync {
         if (std::memcmp(blob.data(), magic.c_str(), magic.size() + 1) != 0) {
             return stl::make_error<std::string>("Invalid OpenSSH key magic");
         }
-        usize offset = magic.size() + 1;
+        size_t offset = magic.size() + 1;
         // Helper to read length-prefixed string
-        auto readString = [&blob, &offset]() -> stl::result<std::string> {
+        auto read_string = [&blob, &offset]() -> stl::result<std::string> {
             if (offset + 4 > blob.size()) {
                 return stl::make_error<std::string>("Truncated key");
             }
@@ -291,39 +291,39 @@ namespace sap::sync {
             return s;
         };
         // Read cipher name
-        auto cipherstl::result = readString();
-        if (!cipherstl::result)
-            return stl::make_error<std::string>(cipherstl::result.error());
-        if (cipherstl::result.value() != "none") {
+        auto cipher_result = read_string();
+        if (!cipher_result)
+            return cipher_result;
+        if (cipher_result.value() != "none") {
             return stl::make_error<std::string>("Encrypted private keys are not supported. "
                                                 "Use ssh-keygen -p to remove passphrase.");
         }
         // Read kdf name
-        auto kdfstl::result = readString();
-        if (!kdfstl::result)
-            return stl::make_error<std::string>(kdfstl::result.error());
+        auto kdf_result = read_string();
+        if (!kdf_result)
+            return kdf_result;
         // Read kdf options (skip)
-        auto kdfOptsstl::result = readString();
-        if (!kdfOptsstl::result)
-            return stl::make_error<std::string>(kdfOptsstl::result.error());
+        auto kdf_opt_result = read_string();
+        if (!kdf_opt_result)
+            return kdf_opt_result;
         // Read number of keys
         if (offset + 4 > blob.size()) {
             return stl::make_error<std::string>("Truncated key (num keys)");
         }
-        u32 numKeys = read_be32(&blob[offset]);
+        u32 num_keys = read_be32(&blob[offset]);
         offset += 4;
-        if (numKeys != 1) {
+        if (num_keys != 1) {
             return stl::make_error<std::string>("Multiple keys in file not supported");
         }
         // Skip public key blob
-        auto pubKeystl::result = readString();
-        if (!pubKeystl::result)
-            return stl::make_error<std::string>(pubKeystl::result.error());
+        auto pub_key_result = read_string();
+        if (!pub_key_result)
+            return pub_key_result;
         // Read private section
-        auto privSectionstl::result = readString();
-        if (!privSectionstl::result)
-            return stl::make_error<std::string>(privSectionstl::result.error());
-        auto& privSection = privSectionstl::result.value();
+        auto priv_section_result = read_string();
+        if (!priv_section_result)
+            return priv_section_result;
+        auto& priv_section = priv_section_result.value();
         // Private section format:
         // - checkint (u32) - repeated twice for verification
         // - checkint (u32)
@@ -332,71 +332,71 @@ namespace sap::sync {
         // - private key (string) 64 bytes (seed + public)
         // - comment (string)
         // - padding
-        usize privOffset = 0;
-        auto privBlob = std::vector<u8>(privSection.begin(), privSection.end());
+        size_t priv_offset = 0;
+        auto priv_blob = std::vector<u8>(priv_section.begin(), priv_section.end());
         // Read and verify check ints
-        if (privOffset + 8 > privBlob.size()) {
+        if (priv_offset + 8 > priv_blob.size()) {
             return stl::make_error<std::string>("Private section too short");
         }
-        u32 check1 = read_be32(&privBlob[privOffset]);
-        privOffset += 4;
-        u32 check2 = read_be32(&privBlob[privOffset]);
-        privOffset += 4;
+        u32 check1 = read_be32(&priv_blob[priv_offset]);
+        priv_offset += 4;
+        u32 check2 = read_be32(&priv_blob[priv_offset]);
+        priv_offset += 4;
         if (check1 != check2) {
             return stl::make_error<std::string>("Private key check failed (wrong passphrase?)");
         }
         // Read key type
-        if (privOffset + 4 > privBlob.size()) {
+        if (priv_offset + 4 > priv_blob.size()) {
             return stl::make_error<std::string>("Truncated private section");
         }
-        u32 typeLen = read_be32(&privBlob[privOffset]);
-        privOffset += 4;
-        if (privOffset + typeLen > privBlob.size()) {
+        u32 type_len = read_be32(&priv_blob[priv_offset]);
+        priv_offset += 4;
+        if (priv_offset + type_len > priv_blob.size()) {
             return stl::make_error<std::string>("Truncated key type");
         }
-        std::string keyType(privBlob.begin() + privOffset, privBlob.begin() + privOffset + typeLen);
-        privOffset += typeLen;
-        if (keyType != "ssh-ed25519") {
-            return stl::make_error<std::string>("Not an Ed25519 key: " + keyType);
+        std::string key_type(priv_blob.begin() + priv_offset, priv_blob.begin() + priv_offset + type_len);
+        priv_offset += type_len;
+        if (key_type != "ssh-ed25519") {
+            return stl::make_error<std::string>("Not an Ed25519 key: {}", key_type);
         }
         // Skip public key
-        if (privOffset + 4 > privBlob.size()) {
+        if (priv_offset + 4 > priv_blob.size()) {
             return stl::make_error<std::string>("Truncated (pub key len)");
         }
-        u32 pubLen = read_be32(&privBlob[privOffset]);
-        privOffset += 4 + pubLen;
+        u32 pub_len = read_be32(&priv_blob[priv_offset]);
+        priv_offset += 4 + pub_len;
         // Read private key (64 bytes: 32-byte seed + 32-byte public)
-        if (privOffset + 4 > privBlob.size()) {
+        if (priv_offset + 4 > priv_blob.size()) {
             return stl::make_error<std::string>("Truncated (priv key len)");
         }
-        u32 privLen = read_be32(&privBlob[privOffset]);
-        privOffset += 4;
-        if (privLen != crypto_sign_ed25519_SECRETKEYBYTES) {
+        u32 priv_len = read_be32(&priv_blob[priv_offset]);
+        priv_offset += 4;
+        if (priv_len != crypto_sign_ed25519_PUBLICKEYBYTES) {
             return stl::make_error<std::string>("Invalid Ed25519 private key length");
         }
-        if (privOffset + privLen > privBlob.size()) {
+        if (priv_offset + priv_len > priv_blob.size()) {
             return stl::make_error<std::string>("Truncated private key data");
         }
         // Extract the 64-byte secret key
-        std::vector<u8> secretKey(privBlob.begin() + privOffset, privBlob.begin() + privOffset + privLen);
+        std::vector<u8> secret_key{priv_blob.begin() + priv_offset, priv_blob.begin() + priv_offset + priv_len};
         // Decode challenge
-        auto challengestl::result = base64_decode(challenge);
-        if (!challengestl::result) {
+        auto challenge_result = base64_decode(challenge);
+        if (!challenge_result) {
             return stl::make_error<std::string>("Invalid challenge encoding");
         }
-        auto& challengeBytes = challengestl::result.value();
+        auto& challenge_bytes = challenge_result.value();
         // Sign
         std::vector<u8> signature(crypto_sign_ed25519_BYTES);
-        crypto_sign_ed25519_detached(signature.data(), nullptr, challengeBytes.data(), challengeBytes.size(), secretKey.data());
+        crypto_sign_ed25519_detached(signature.data(), nullptr, challenge_bytes.data(), challenge_bytes.size(), secret_key.data());
         // Clear secret key from memory
-        sodium_memzero(secretKey.data(), secretKey.size());
+        sodium_memzero(secret_key.data(), secret_key.size());
         return base64_encode(signature);
     }
 
     stl::result<std::string> load_public_key_file(const std::filesystem::path& path) {
         std::ifstream file(path);
         if (!file) {
-            return stl::make_error<std::string>("Cannot open public key file: " + path.string());
+            return stl::make_error<std::string>("Cannot open public key file: {}", path.string());
         }
         std::string line;
         std::getline(file, line);
@@ -407,19 +407,18 @@ namespace sap::sync {
         return line;
     }
 
-    bool is_key_authorized(const std::vector<std::string>& authorizedKeys, std::string_view publicKey) {
+    bool is_key_authorized(const std::vector<std::string>& authorized_keys, std::string_view public_ley) {
         // Parse the public key to normalize it
-        auto keystl::result = parse_public_key(publicKey);
-        if (!keystl::result) {
+        auto key_result = parse_public_key(public_ley);
+        if (!key_result) {
             return false;
         }
-        std::string normalizedKey = keystl::result.value().to_string();
         // Check against each authorized key
-        for (const auto& authKey : authorizedKeys) {
-            auto authstl::result = parse_public_key(authKey);
-            if (authstl::result) {
+        for (const auto& auth_key : authorized_keys) {
+            auto auth_result = parse_public_key(auth_key);
+            if (auth_result) {
                 // Compare key data (ignore comments)
-                if (authstl::result.value().keyData == keystl::result.value().keyData) {
+                if (auth_result.value().key_data == key_result.value().key_data) {
                     return true;
                 }
             }
@@ -430,7 +429,7 @@ namespace sap::sync {
     stl::result<std::vector<std::string>> load_authorized_keys(const std::filesystem::path& path) {
         std::ifstream file(path);
         if (!file) {
-            return stl::result<std::vector<std::string>>(error, "Cannot open authorized_keys: " + path.string());
+            return stl::make_error<std::vector<std::string>>("Cannot open authorized_keys: {}", path.string());
         }
         std::vector<std::string> keys;
         std::string line;

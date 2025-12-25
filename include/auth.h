@@ -17,7 +17,7 @@ namespace sap::sync {
     // Parsed SSH public key
     struct PublicKey {
         std::string algorithm; // "ssh-ed25519"
-        std::vector<u8> keyData; // Raw key bytes (32 bytes for Ed25519)
+        std::vector<u8> key_data; // Raw key bytes (32 bytes for Ed25519)
         std::string comment; // Optional: "user@hostname"
         // Serialize back to SSH format: "ssh-ed25519 AAAA... comment"
         std::string to_string() const;
@@ -26,23 +26,23 @@ namespace sap::sync {
     // Authentication challenge (server -> client)
     struct AuthChallenge {
         std::string challenge; // Random bytes, base64-encoded
-        std::string publicKey; // The public key this challenge is for
+        std::string public_ley; // The public key this challenge is for
         i64 expiresAt; // Unix timestamp (seconds)
-        NLOHMANN_DEFINE_TYPE_INTRUSIVE(AuthChallenge, challenge, publicKey, expiresAt)
+        NLOHMANN_DEFINE_TYPE_INTRUSIVE(AuthChallenge, challenge, public_ley, expiresAt)
     };
 
     // Challenge request (client -> server)
     struct ChallengeRequest {
-        std::string publicKey; // SSH public key string
-        NLOHMANN_DEFINE_TYPE_INTRUSIVE(ChallengeRequest, publicKey)
+        std::string public_ley; // SSH public key string
+        NLOHMANN_DEFINE_TYPE_INTRUSIVE(ChallengeRequest, public_ley)
     };
 
     // Verification request (client -> server)
     struct VerifyRequest {
-        std::string publicKey; // SSH public key string
+        std::string public_ley; // SSH public key string
         std::string challenge; // The challenge that was signed
         std::string signature; // Ed25519 signature, base64-encoded
-        NLOHMANN_DEFINE_TYPE_INTRUSIVE(VerifyRequest, publicKey, challenge, signature)
+        NLOHMANN_DEFINE_TYPE_INTRUSIVE(VerifyRequest, public_ley, challenge, signature)
     };
 
     // Authentication token (server -> client)
@@ -63,11 +63,11 @@ namespace sap::sync {
     std::string generate_challenge();
 
     // Verify an Ed25519 signature
-    // - publicKey: Parsed public key (must be Ed25519)
+    // - public_ley: Parsed public key (must be Ed25519)
     // - challenge: The original challenge bytes (base64-encoded)
     // - signature: The signature to verify (base64-encoded)
     // Returns true if signature is valid, false otherwise
-    stl::result<bool> verify_signature(const PublicKey& publicKey, std::string_view challenge, std::string_view signature);
+    stl::result<bool> verify_signature(const PublicKey& public_ley, std::string_view challenge, std::string_view signature);
 
     // Generate a secure random token for authenticated sessions
     std::string generate_token();
@@ -89,7 +89,7 @@ namespace sap::sync {
     stl::result<std::vector<u8>> base64_decode(std::string_view encoded);
 
     // Check if a public key is in the authorized_keys list
-    bool is_key_authorized(const std::vector<std::string>& authorizedKeys, std::string_view publicKey);
+    bool is_key_authorized(const std::vector<std::string>& authorizedKeys, std::string_view public_ley);
 
     // Load authorized keys from file (one key per line, SSH format)
     stl::result<std::vector<std::string>> load_authorized_keys(const std::filesystem::path& path);
