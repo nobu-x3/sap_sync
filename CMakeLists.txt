@@ -13,6 +13,7 @@ option(SAP_SYNC_BUILD_TESTS "Build sap_sync tests" ${PROJECT_IS_TOP_LEVEL})
 
 add_library(sap_sync STATIC
     src/hash.cpp
+    src/auth.cpp
 )
 add_library(sap::sync ALIAS sap_sync)
 
@@ -29,7 +30,7 @@ target_include_directories(sap_sync
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/xxHash>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/sap_core/include>
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/libsodium/src/include>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/libsodium/src/libsodium/include>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/json/include>
         $<INSTALL_INTERFACE:include>
         ${SODIUM_INCLUDE_DIRS}
