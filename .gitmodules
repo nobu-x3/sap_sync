@@ -4,9 +4,6 @@
 [submodule "sap_core"]
 	path = sap_core
 	url = https://github.com/nobu-x3/sap_core.git
-[submodule "libsodium"]
-	path = libsodium
-	url = https://github.com/jedisct1/libsodium.git
 [submodule "json"]
 	path = json
 	url = https://github.com/nlohmann/json.git

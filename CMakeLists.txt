@@ -25,6 +25,11 @@ add_subdirectory(xxHash/cmake_unofficial)
 set(JSON_BuildTests OFF CACHE BOOL "" FORCE)
 add_subdirectory(json)
 
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+    pkg_check_modules(SODIUM IMPORTED_TARGET libsodium)
+endif()
+
 target_include_directories(sap_sync
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
