@@ -2,6 +2,7 @@
 #include <gtest/gtest.h>
 #include "hash.h"
 #include "auth.h"
+#include "protocol.h"
 
 TEST(HashTest, HashBytes) {
     std::string data = "Hello, World!";
@@ -134,4 +135,197 @@ TEST(AuthTest, KeyAuthorization) {
     // Unknown key should not match
     std::string unknownKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJZPklS9XqMwkpKGpKYFPE9xQbS5gKL3e2Q5d1K2Z0m8 unknown@host";
     EXPECT_FALSE(sap::sync::is_key_authorized(authorizedKeys, unknownKey));
+}
+
+using namespace sap::sync;
+
+class SyncOperationTest : public ::testing::Test {
+protected:
+    FileMetadata makeFile(const std::string& path, const std::string& hash,
+                          Timestamp mtime, bool deleted = false) {
+        FileMetadata f;
+        f.path = path;
+        f.hash = hash;
+        f.size = 100;
+        f.mtime = mtime;
+        f.created_at = 1000;
+        f.updated_at = mtime;
+        f.is_deleted = deleted;
+        return f;
+    }
+};
+
+TEST_F(SyncOperationTest, FileOnlyOnServer) {
+    auto remote = makeFile("test.txt", "abc", 1000);
+    auto action = determine_action(std::nullopt, remote);
+    EXPECT_EQ(action, ESyncAction::Download);
+}
+
+TEST_F(SyncOperationTest, FileOnlyOnClient) {
+    auto local = makeFile("test.txt", "abc", 1000);
+    auto action = determine_action(local, std::nullopt);
+    EXPECT_EQ(action, ESyncAction::Upload);
+}
+
+TEST_F(SyncOperationTest, FilesInSync) {
+    auto local = makeFile("test.txt", "abc", 1000);
+    auto remote = makeFile("test.txt", "abc", 1000);
+    auto action = determine_action(local, remote);
+    EXPECT_EQ(action, ESyncAction::None);
+}
+
+TEST_F(SyncOperationTest, ServerNewer) {
+    auto local = makeFile("test.txt", "old", 1000);
+    auto remote = makeFile("test.txt", "new", 2000);
+    auto action = determine_action(local, remote);
+    EXPECT_EQ(action, ESyncAction::Download);
+}
+
+TEST_F(SyncOperationTest, ClientNewer) {
+    auto local = makeFile("test.txt", "new", 2000);
+    auto remote = makeFile("test.txt", "old", 1000);
+    auto action = determine_action(local, remote);
+    EXPECT_EQ(action, ESyncAction::Upload);
+}
+
+TEST_F(SyncOperationTest, DeletedOnServer) {
+    auto local = makeFile("test.txt", "abc", 1000);
+    auto remote = makeFile("test.txt", "abc", 1000, true);
+    auto action = determine_action(local, remote);
+    EXPECT_EQ(action, ESyncAction::Delete);
+}
+
+TEST_F(SyncOperationTest, ComputeOperations) {
+    std::vector<FileMetadata> local = {
+        makeFile("both.txt", "same", 1000),
+        makeFile("local-only.txt", "local", 1000),
+        makeFile("client-newer.txt", "new", 2000),
+    };
+    std::vector<FileMetadata> remote = {
+        makeFile("both.txt", "same", 1000),
+        makeFile("remote-only.txt", "remote", 1000),
+        makeFile("client-newer.txt", "old", 1000),
+    };
+    auto ops = compute_sync_operations(local, remote);
+    // Should have 3 operations: download remote-only, upload local-only, upload client-newer
+    EXPECT_EQ(ops.size(), 3);
+    // Find each operation
+    bool foundDownload = false, foundUploadLocal = false, foundUploadNewer = false;
+    for (const auto& op : ops) {
+        if (op.path == "remote-only.txt" && op.action == ESyncAction::Download) {
+            foundDownload = true;
+        }
+        if (op.path == "local-only.txt" && op.action == ESyncAction::Upload) {
+            foundUploadLocal = true;
+        }
+        if (op.path == "client-newer.txt" && op.action == ESyncAction::Upload) {
+            foundUploadNewer = true;
+        }
+    }
+    EXPECT_TRUE(foundDownload);
+    EXPECT_TRUE(foundUploadLocal);
+    EXPECT_TRUE(foundUploadNewer);
+}
+
+TEST(NoteParsingTest, ParseWithFrontmatter) {
+    std::string content = R"(---
+tags: [project, idea]
+---
+# My Note Title
+
+Some content here.)";
+    auto result = parse_note(content);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result.value().title, "My Note Title");
+    EXPECT_EQ(result.value().tags.size(), 2);
+    EXPECT_EQ(result.value().tags[0], "project");
+    EXPECT_EQ(result.value().tags[1], "idea");
+    EXPECT_TRUE(result.value().content.find("Some content") != std::string::npos);
+}
+
+TEST(NoteParsingTest, ParseWithoutFrontmatter) {
+    std::string content = "# Simple Note\n\nJust content.";
+    auto result = parse_note(content);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result.value().title, "Simple Note");
+    EXPECT_TRUE(result.value().tags.empty());
+}
+
+TEST(NoteParsingTest, ParseNoHeading) {
+    std::string content = "This is just text without a heading.";
+    auto result = parse_note(content);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result.value().title, "This is just text without a heading.");
+}
+
+TEST(NoteParsingTest, SerializeNote) {
+    ParsedNote note;
+    note.title = "Test";
+    note.content = "# Test\n\nContent";
+    note.tags = {"tag1", "tag2"};
+    std::string serialized = serialize_note(note);
+    EXPECT_TRUE(serialized.find("tags: [tag1, tag2]") != std::string::npos);
+    EXPECT_TRUE(serialized.find("# Test") != std::string::npos);
+}
+
+TEST(NoteParsingTest, GeneratePreview) {
+    std::string content = "# Heading\n\nThis is **bold** and _italic_ text.\n\nMore content.";
+    std::string preview = generate_preview(content, 50);
+    EXPECT_LE(preview.length(), 53);  // 50 + "..."
+    EXPECT_TRUE(preview.find("**") == std::string::npos);  // Markdown removed
+    EXPECT_TRUE(preview.find("_") == std::string::npos);
+}
+
+TEST(UUIDTest, GenerateUnique) {
+    std::string uuid1 = generate_uuid();
+    std::string uuid2 = generate_uuid();
+    EXPECT_NE(uuid1, uuid2);
+}
+
+TEST(UUIDTest, ValidFormat) {
+    std::string uuid = generate_uuid();
+    // Format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
+    EXPECT_EQ(uuid.length(), 36);
+    EXPECT_EQ(uuid[8], '-');
+    EXPECT_EQ(uuid[13], '-');
+    EXPECT_EQ(uuid[14], '4');  // Version 4
+    EXPECT_EQ(uuid[18], '-');
+    EXPECT_EQ(uuid[23], '-');
+    // Variant should be 8, 9, a, or b
+    char variant = uuid[19];
+    EXPECT_TRUE(variant == '8' || variant == '9' || variant == 'a' || variant == 'b');
+}
+
+TEST(JsonTest, FileMetadata) {
+    FileMetadata f;
+    f.path = "test/file.txt";
+    f.hash = "abc123";
+    f.size = 1024;
+    f.mtime = 1234567890;
+    f.created_at = 1234567800;
+    f.updated_at = 1234567890;
+    f.is_deleted = false;
+    nlohmann::json j = f;
+    EXPECT_EQ(j["path"], "test/file.txt");
+    EXPECT_EQ(j["hash"], "abc123");
+    EXPECT_EQ(j["size"], 1024);
+    // Deserialize
+    FileMetadata f2 = j.get<FileMetadata>();
+    EXPECT_EQ(f2.path, f.path);
+    EXPECT_EQ(f2.hash, f.hash);
+}
+
+TEST(JsonTest, NoteUpdateRequestOptionalFields) {
+    NoteUpdateRequest req;
+    req.title = "New Title";
+    // content and tags are not set
+    nlohmann::json j = req;
+    EXPECT_TRUE(j.contains("title"));
+    EXPECT_FALSE(j.contains("content"));
+    EXPECT_FALSE(j.contains("tags"));
+}
+
+int main(int argc, char** argv) {
+    ::testing::InitGoogleTest(&argc, argv);
+    return RUN_ALL_TESTS();
 }
